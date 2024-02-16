@@ -9,42 +9,26 @@ function assert(condition, message) {
     }
 }
 
-const instanceNumber = Number(process.argv[2])
-const instances = Number(process.argv[3])
-
-assert(Number.isInteger(instanceNumber))
-assert(Number.isInteger(instances))
-assert(instanceNumber >= 0)
-assert(instances > 0)
-assert(instanceNumber < instances)
-
-const mkName = instanceNumber => `reader-writer-example-${instanceNumber}`
-
-const mkKey = instanceNumber =>
-  ({ 0 : "cc5fb251d792d73246c5cb9a4307dc1e9a7c7ff02832aed7254da6d60967a18c"
-    ,1 : "679dbe06ae147ec331cddad0a94d96012b9b414e6849a88b5839dcc59c853948"
-    ,2 : "3d7c60315c1bf71571d842e9fc77da4c08f93cf2e8c6a64005c1f84d3f6d5549"
-  }[instanceNumber])
+const myCoreName = process.argv[2]
+assert(myCoreName, 'Please provide a core name')
 
 const topic = Buffer.alloc(32).fill(`this is a reader-writer example`)
 
-const store = new Corestore(`./readerwriter-storage-${instanceNumber}`, {
+const store = new Corestore(`./readerwriter-storage-${myCoreName}`, {
   primaryKey: topic
 })
 
 const swarm = new Hyperswarm()
 goodbye(() => swarm.destroy())
 
+function sendMessageToAllPeers (message) {
+  const peers = [...swarm.connections]
+  for (const peer of peers) peer.write(message)
+}
 
-const cores = Array.from({ length: instances }, (_, i) =>
-  store.get(
-    i === instanceNumber
-    ? { name: mkName(i), valueEncoding: 'utf-8' }
-    : {  valueEncoding: 'utf-8', key: mkKey(i) }
-  )
-)
-
-await Promise.all(cores.map(core => core.ready()))
+function logMessage ({ name, message }) {
+  console.log(`[${name}] ${message}`)
+}
 
 const prepareCore = core => {
   core.on('append', () => {
@@ -54,26 +38,35 @@ const prepareCore = core => {
   })
 }
 
-let myCore
 
-cores.forEach((core,i) => {
-  if (i === instanceNumber) {
-    console.log( 'my core' ,i, 'key: ', core.key.toString('hex'));
-    myCore = core
-  }
-  else {
-    console.log( 'core ',i, 'key: ', core.key.toString('hex'));
-    prepareCore(core)
-  }
+const myCore = store.get({name: myCoreName})
 
+await  myCore.ready()
+
+prepareCore(myCore)
+
+const coreKeyPrefix = 'core:'
+
+swarm.on('connection', peer => {
+  const name = b4a.toString(peer.remotePublicKey, 'hex').substr(0, 6)
+  console.log(`[info] New peer joined, ${name}`)
+  peer.on('data', message => {
+    if (message.slice(0,5).toString().startsWith(coreKeyPrefix)) {
+      const coreKey = message.slice(5).toString()
+      const core = store.get(coreKey)
+      console.log(`[info] Peer ${name} has core ${coreKey}`)
+      core.ready().then(() => prepareCore(core))
+    }
+  })
+  store.replicate(peer)
+  peer.write('core:' + myCore.key.toString('hex'))
 })
 
-swarm.on('connection', conn => store.replicate(conn))
 
 swarm.join(topic)
 
 
 process.stdin.on('data', data => {
-    console.log(`appending to core ${instanceNumber}`)
+    console.log(`appending to core ${myCore.key.toString('hex')}: ${data}`)
     myCore.append(data)
 })
