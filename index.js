@@ -21,6 +21,8 @@ const store = new Corestore(`./readerwriter-storage-${myCoreName}`, {
 const swarm = new Hyperswarm()
 goodbye(() => swarm.destroy())
 
+const knownCores = new Set()
+
 function sendMessageToAllPeers (message) {
   const peers = [...swarm.connections]
   for (const peer of peers) peer.write(message)
@@ -36,6 +38,7 @@ const prepareCore = core => {
       console.log('core ', core.key.toString('hex'), ' appended: ', data.toString())
     })
   })
+  knownCores.add(core.key.toString('hex'))
 }
 
 
@@ -53,13 +56,16 @@ swarm.on('connection', peer => {
   peer.on('data', message => {
     if (message.slice(0,5).toString().startsWith(coreKeyPrefix)) {
       const coreKey = message.slice(5).toString()
+      if (knownCores.has(coreKey)) return
       const core = store.get(coreKey)
       console.log(`[info] Peer ${name} has core ${coreKey}`)
       core.ready().then(() => prepareCore(core))
     }
   })
   store.replicate(peer)
-  peer.write('core:' + myCore.key.toString('hex'))
+  for (const coreKey of knownCores) {
+    peer.write(coreKeyPrefix + coreKey)
+  }
 })
 
 
