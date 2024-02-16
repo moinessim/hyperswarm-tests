@@ -2,6 +2,20 @@ import Corestore from 'corestore'
 import Hyperswarm from 'hyperswarm'
 import goodbye from 'graceful-goodbye'
 import b4a from 'b4a'
+import DHT from 'hyperdht'
+import { program } from 'commander'
+import crypto from 'crypto'
+
+program
+  .version('0.0.1')
+  .option('-n, --name <name>', 'Name of the core')
+  .option('-b, --bootstrap <bootstrap>', 'Bootstrap node')
+  .option('-i, --ip', 'My public IPv4 address')
+  .option('-p, --port', 'My public port')
+  .parse(process.argv)
+
+const options = program.opts()
+
 
 function assert(condition, message) {
     if (!condition) {
@@ -9,8 +23,9 @@ function assert(condition, message) {
     }
 }
 
-const myCoreName = process.argv[2]
-assert(myCoreName, 'Please provide a core name')
+assert( options.bootstrap || (options.ip && options.port), 'You must provide either a bootstrap node or your public IP and port')
+
+const myCoreName = options.name ? options.name : crypto.randomBytes(32).toString('hex')
 
 const topic = Buffer.alloc(32).fill(`this is a reader-writer example`)
 
@@ -18,7 +33,18 @@ const store = new Corestore(`./readerwriter-storage-${myCoreName}`, {
   primaryKey: topic
 })
 
-const swarm = new Hyperswarm()
+const dhtOptions = { bootstrap: options.bootstrap ? [options.bootstrap] : [] }
+
+let dht
+
+if (options.ip && options.port) {
+  dht = new DHT( { port : options.port, ephemeral: false, firewalled: false, anyPort: false, ...dhtOptions })
+  dht._nat.add(options.ip, options.port)
+} else {
+  dht = new DHT(dhtOptions)
+}
+
+const swarm = new Hyperswarm({dht})
 goodbye(() => swarm.destroy())
 
 const knownCores = new Set()
