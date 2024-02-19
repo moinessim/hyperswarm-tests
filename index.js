@@ -3,15 +3,21 @@ import Hyperswarm from 'hyperswarm'
 import goodbye from 'graceful-goodbye'
 import b4a from 'b4a'
 import DHT from 'hyperdht'
-import { program } from 'commander'
+import { program, InvalidArgumentError } from 'commander'
 import crypto from 'crypto'
 
 program
   .version('0.0.1')
   .option('-n, --name <name>', 'Name of the core')
   .option('-b, --bootstrap <bootstrap>', 'Bootstrap node')
-  .option('-i, --ip', 'My public IPv4 address')
-  .option('-p, --port', 'My public port')
+  .option('-i, --ip <ip>', 'My public IPv4 address')
+  .option('-p, --port <port>', 'My public port', (value, _) => {
+    const i = parseInt(value)
+    if (isNaN(i) || i < 0 || i > 65535) {
+      throw new InvalidArgumentError(`Port must be a number between 0 and 65535, you gave me: ${value}`);
+    }
+    return i
+  })
   .parse(process.argv)
 
 const options = program.opts()
@@ -43,6 +49,8 @@ if (options.ip && options.port) {
 } else {
   dht = new DHT(dhtOptions)
 }
+
+dht.on('ready', () => { console.log('Node bound to',dht.address()) })
 
 const swarm = new Hyperswarm({dht})
 goodbye(() => swarm.destroy())
