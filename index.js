@@ -79,6 +79,7 @@ const prepareCore = core => {
 const myCore = store.get({name: myCoreName})
 
 await  myCore.ready()
+console.log(`Core key: ${myCore.key.toString('hex')}`)
 
 prepareCore(myCore)
 
@@ -110,3 +111,5 @@ process.stdin.on('data', data => {
     console.log(`appending to core ${myCore.key.toString('hex')}: ${data}`)
     myCore.append(data)
 })
+
+console.log('Type something to append to the core')
