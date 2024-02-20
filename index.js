@@ -29,6 +29,18 @@ function assert(condition, message) {
     }
 }
 
+function parseNode (s) {
+  if (typeof s === 'object') return s
+  if (typeof s === 'number') return { host: '127.0.0.1', port: s }
+  const [host, port] = s.split(':')
+  if (!port) throw new Error('Bootstrap node format is host:port')
+
+  return {
+    host,
+    port: Number(port)
+  }
+}
+
 assert( options.bootstrap || (options.ip && options.port), 'You must provide either a bootstrap node or your public IP and port')
 
 const myCoreName = options.name ? options.name : crypto.randomBytes(32).toString('hex')
@@ -39,7 +51,10 @@ const store = new Corestore(`./readerwriter-storage-${myCoreName}`, {
   primaryKey: topic
 })
 
-const dhtOptions = { bootstrap: options.bootstrap ? [options.bootstrap] : [] }
+const dhtOptions = {
+  bootstrap: options.bootstrap ? [options.bootstrap] : []
+  ,nodes: options.bootstrap ? [parseNode(options.bootstrap)] : []
+}
 
 let dht
 
